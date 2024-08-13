@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enhanced JSON Template Builder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/codemirror.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/codemirror.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/mode/javascript/javascript.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.62.0/theme/monokai.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+  <style>
+    [x-cloak] {
+      display: none !important;
+    }
+
+    .CodeMirror {
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-100">
+  <div x-data="templateBuilder()" class="flex h-screen">
+    <!-- Sidebar -->
+    <div class="w-64 bg-gray-800 text-white p-4">
+      <h2 class="text-xl font-bold mb-4">Tools</h2>
+      <button @click="addSection" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded mb-2 w-full">
+        <i class="fas fa-plus-circle mr-2"></i>Add Section
+      </button>
+      <button @click="addField" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded mb-2 w-full">
+        <i class="fas fa-plus-square mr-2"></i>Add Field
+      </button>
+      <button @click="exportJSON" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded w-full">
+        <i class="fas fa-file-export mr-2"></i>Export JSON
+      </button>
+    </div>
+
+    <!-- Content Area -->
+    <div class="flex-1 p-8 overflow-auto">
+      <h1 class="text-3xl font-bold mb-6">Juddoc Contract Studio</h1>
+      <div id="template-structure" class="space-y-4">
+        <template x-for="(section, sectionIndex) in templateData.template_qa.template_qa_schema" :key="section.id">
+          <div class="bg-white p-4 rounded shadow relative" @mouseenter="showToolbar = sectionIndex" @mouseleave="showToolbar = null">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center">
+                <i class="fas fa-grip-vertical mr-2 cursor-move"></i>
+                <input x-model="section.section_label" class="text-xl font-bold" />
+              </div>
+            </div>
+            <div class="space-y-2 field-list">
+              <template x-for="(field, fieldIndex) in section.fields" :key="field.id">
+                <div class="flex items-center space-x-2 relative" @mouseenter="showFieldToolbar = `${sectionIndex}-${fieldIndex}`" @mouseleave="showFieldToolbar = null">
+                  <i class="fas fa-grip-vertical cursor-move"></i>
+                  <input x-model="field.field_label" class="flex-1 p-2 border rounded" />
+                  <!-- Inline Field Toolbar -->
+                  <div x-show="showFieldToolbar === `${sectionIndex}-${fieldIndex}`" class="absolute right-0 top-0 bg-white shadow-md rounded-md p-2 flex space-x-2" x-cloak>
+                    <button @click="editField(sectionIndex, fieldIndex)" class="text-blue-500 hover:text-blue-600">
+                      <i class="fas fa-edit"></i>
+                    </button>
+                    <button @click="removeField(sectionIndex, fieldIndex)" class="text-red-500 hover:text-red-600">
+                      <i class="fas fa-trash-alt"></i>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <!-- Inline Section Toolbar -->
+            <div x-show="showToolbar === sectionIndex" class="absolute right-2 top-2 bg-white shadow-md rounded-md p-2 flex space-x-2" x-cloak>
+              <button @click="addFieldToSection(sectionIndex)" class="text-green-500 hover:text-green-600">
+                <i class="fas fa-plus"></i>
+              </button>
+              <button @click="removeSection(sectionIndex)" class="text-red-500 hover:text-red-600">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- JSON Preview -->
+    <div class="w-1/3 bg-gray-900 p-4">
+      <h2 class="text-xl font-bold mb-4 text-white">JSON Preview</h2>
+      <div id="json-preview" class="h-full">
+        <textarea id="json-editor" class="w-full h-full"></textarea>
+      </div>
+    </div>
+
+    <!-- Field Edit Modal -->
+    <div x-show="showFieldModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" x-cloak>
+      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+          <h3 class="text-lg leading-6 font-medium text-gray-900">Edit Field</h3>
+          <div class="mt-2 px-7 py-3">
+            <input x-model="currentField.field_label" placeholder="Field Label" class="mb-2 w-full p-2 border rounded">
+            <select x-model="currentField.field_type" @change="updateValidation" class="mb-2 w-full p-2 border rounded">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="textarea">Textarea</option>
+              <option value="date">Date</option>
+            </select>
+            <input x-model="currentField.field_variable" placeholder="Field Variable" class="mb-2 w-full p-2 border rounded">
+            <div class="flex space-x-2 mb-2">
+              <input type="checkbox" id="required" x-model="currentField.validation.required">
+              <label for="required">Required</label>
+            </div>
+            <template x-if="['text', 'textarea'].includes(currentField.field_type)">
+              <div>
+                <input x-model.number="currentField.validation.minlength" placeholder="Min Length" class="mb-2 w-full p-2 border rounded">
+                <input x-model.number="currentField.validation.maxlength" placeholder="Max Length" class="mb-2 w-full p-2 border rounded">
+              </div>
+            </template>
+            <template x-if="currentField.field_type === 'number'">
+              <div>
+                <input x-model.number="currentField.validation.minvalue" placeholder="Min Value" class="mb-2 w-full p-2 border rounded">
+                <input x-model.number="currentField.validation.maxvalue" placeholder="Max Value" class="mb-2 w-full p-2 border rounded">
+              </div>
+            </template>
+            <template x-if="currentField.field_type === 'date'">
+              <div>
+                <input type="date" x-model="currentField.validation.mindate" placeholder="Min Date" class="mb-2 w-full p-2 border rounded">
+                <input type="date" x-model="currentField.validation.maxdate" placeholder="Max Date" class="mb-2 w-full p-2 border rounded">
+              </div>
+            </template>
+          </div>
+          <div class="items-center px-4 py-3">
+            <button @click="saveField" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function templateBuilder() {
+      return {
+        templateData: {
+          template_qa: {
+            template_id: "13",
+            template_label: "Template - Non-Disclosure Agreement",
+            template_qa_schema: []
+          }
+        },
+        showFieldModal: false,
+        currentField: null,
+        currentSectionIndex: null,
+        currentFieldIndex: null,
+        jsonEditor: null,
+        showToolbar: null,
+        showFieldToolbar: null,
+        init() {
+          this.loadFromLocalStorage();
+          this.initSortable();
+          this.initJSONEditor();
+          this.$watch('templateData', () => {
+            this.updateJSONPreview();
+            this.saveToLocalStorage();
+          }, {
+            deep: true
+          });
+        },
+        loadFromLocalStorage() {
+          const savedData = localStorage.getItem('templateData');
+          if (savedData) {
+            this.templateData = JSON.parse(savedData);
+          }
+        },
+        saveToLocalStorage() {
+          localStorage.setItem('templateData', JSON.stringify(this.templateData));
+        },
+        initSortable() {
+          new Sortable(document.getElementById('template-structure'), {
+            animation: 150,
+            handle: '.fa-grip-vertical',
+            ghostClass: 'bg-blue-100'
+          });
+          document.querySelectorAll('.field-list').forEach(el => {
+            new Sortable(el, {
+              animation: 150,
+              handle: '.fa-grip-vertical',
+              ghostClass: 'bg-green-100'
+            });
+          });
+        },
+        initJSONEditor() {
+          this.jsonEditor = CodeMirror.fromTextArea(document.getElementById('json-editor'), {
+            mode: "javascript",
+            theme: "monokai",
+            lineNumbers: true,
+            readOnly: true
+          });
+          this.updateJSONPreview();
+        },
+        updateJSONPreview() {
+          this.$nextTick(() => {
+            this.jsonEditor.setValue(JSON.stringify(this.templateData, null, 2));
+            this.jsonEditor.refresh();
+          });
+        },
+        addSection() {
+          this.templateData.template_qa.template_qa_schema.push({
+            id: Date.now().toString(),
+            section_label: "New Section",
+            fields: []
+          });
+        },
+        removeSection(index) {
+          this.templateData.template_qa.template_qa_schema.splice(index, 1);
+        },
+        addField() {
+          if (this.templateData.template_qa.template_qa_schema.length === 0) {
+            this.addSection();
+          }
+          this.addFieldToSection(this.templateData.template_qa.template_qa_schema.length - 1);
+        },
+        addFieldToSection(sectionIndex) {
+          this.templateData.template_qa.template_qa_schema[sectionIndex].fields.push({
+            id: Date.now().toString(),
+            field_type: "text",
+            multiline: false,
+            field_variable: "",
+            field_label: "New Field",
+            hint: "",
+            default_value: "",
+            source: "UI",
+            isNumberField: false,
+            validation: {
+              required: false,
+              minlength: 0,
+              maxlength: 100
+            }
+          });
+        },
+        removeField(sectionIndex, fieldIndex) {
+          this.templateData.template_qa.template_qa_schema[sectionIndex].fields.splice(fieldIndex, 1);
+        },
+        editField(sectionIndex, fieldIndex) {
+          this.currentSectionIndex = sectionIndex;
+          this.currentFieldIndex = fieldIndex;
+          this.currentField = JSON.parse(JSON.stringify(this.templateData.template_qa.template_qa_schema[sectionIndex].fields[fieldIndex]));
+          this.showFieldModal = true;
+        },
+        updateValidation() {
+          switch (this.currentField.field_type) {
+            case 'text':
+            case 'textarea':
+              this.currentField.validation = {
+                required: this.currentField.validation.required,
+                minlength: 0,
+                maxlength: 100
+              };
+              break;
+            case 'number':
+              this.currentField.validation = {
+                required: this.currentField.validation.required,
+                minvalue: null,
+                maxvalue: null
+              };
+              break;
+            case 'date':
+              this.currentField.validation = {
+                required: this.currentField.validation.required,
+                mindate: null,
+                maxdate: null
+              };
+              break;
+          }
+        },
+        saveField() {
+          this.templateData.template_qa.template_qa_schema[this.currentSectionIndex].fields[this.currentFieldIndex] = this.currentField;
+          this.showFieldModal = false;
+        },
+        exportJSON() {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.templateData, null, 2));
+          const downloadAnchorNode = document.createElement('a');
+          downloadAnchorNode.setAttribute("href", dataStr);
+          downloadAnchorNode.setAttribute("download", "template.json");
+          document.body.appendChild(downloadAnchorNode);
+          downloadAnchorNode.click();
+          downloadAnchorNode.remove();
+        }
+      }
+    }
+  </script>
+</body>
+
+</html>
